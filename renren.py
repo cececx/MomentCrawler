@@ -2,6 +2,7 @@
 #-*- coding: utf-8 -*-  
 
 import cookielib
+import json
 import re
 import requests
 import sys
@@ -10,6 +11,9 @@ import urllib2
 
 from datetime import datetime
 from bs4 import BeautifulSoup
+
+DATETIME_INPUT_PATTERN = '%Y年%m月%d日 %H:%M\xc2\xa0'
+DATETIME_OUTPUT_PATTERN = '%Y-%m-%d %H:%M'
 
 
 class RenrenCrawler:
@@ -22,11 +26,11 @@ class RenrenCrawler:
     self.status = []
     try:
       self.cookie = cookielib.CookieJar()
-      self.cookieProc = urllib2.HTTPCookieProcessor(self.cookie)
+      self.cookie_proc = urllib2.HTTPCookieProcessor(self.cookie)
     except:
       raise
     else:
-      opener = urllib2.build_opener(self.cookieProc)
+      opener = urllib2.build_opener(self.cookie_proc)
       urllib2.install_opener(opener)
 
   def login(self):
@@ -47,8 +51,7 @@ class RenrenCrawler:
       print 'Login failed: ', e.message
       return False
 
-  def getStatus(self):
-    datetimePattern = '%Y年%m月%d日 %H:%M\xc2\xa0'
+  def get_status(self):
     # Get status url.
     url = 'http://3g.renren.com/profile.do'
     data = {'id':str(self.id), 'sid':self.sid}
@@ -58,42 +61,45 @@ class RenrenCrawler:
     
     # Get total page count.
     request = urllib2.Request(url)
-    statusPage = BeautifulSoup(urllib2.urlopen(request).read(), 'html.parser')
-    pageContent = str(statusPage.select('.gray')[0].contents)
-    page = int(re.findall(r"(?<=/)\d+(?=[^\d])", pageContent)[0])
-    page = 3
+    status_page = BeautifulSoup(urllib2.urlopen(request).read(), 'html.parser')
+    page_content = str(status_page.select('.gray')[0].contents)
+    total_page = int(re.findall(r"(?<=/)\d+(?=[^\d])", page_content)[0])
 
     # Iterate pages.
-    i = 1
-    while i <= page:
-      print "Loading page " + str(i)
-      statusList = statusPage.select('.list')[0].find_all('div')
-      for status in statusList:
+    current_page = 1
+    while current_page <= total_page:
+      status_list = status_page.select('.list')[0].find_all('div')
+      for status in status_list:
         if status.select('.time'):
           if not status.select('.forward'):
-            item = {}
-            time = str(status.select(".time")[0].string).strip()
-            item['datetime'] = datetime.strptime(time, datetimePattern)
-            item['content'] = (status.a.next_element).strip()
-            self.status.append(item)
-            print item['datetime'].strftime('%Y-%m-%d %H:%M')
-            print item['content'].encode('utf-8')
+            obj = {}
+            time_str = str(status.select(".time")[0].string).strip()
+            time = datetime.strptime(time_str, DATETIME_INPUT_PATTERN)
+            obj['datetime'] = time.strftime(DATETIME_OUTPUT_PATTERN)
+            obj['content'] = (status.a.next_element).strip()
+            self.status.append(obj)
+            print obj['datetime']
+            print obj['content'].encode('utf-8')
             print ''
-      i += 1
-      if i > page:
+      current_page += 1
+      if current_page > total_page:
         break
+
       # Get the next page.
-      url = str(statusPage.select(".l")[0].a['href'])
+      url = str(status_page.select(".l")[0].a['href'])
       req = urllib2.Request(url)
-      statusPage = BeautifulSoup(urllib2.urlopen(req).read(), 'html.parser')
+      status_page = BeautifulSoup(urllib2.urlopen(req).read(), 'html.parser')
 
-  def WriteJson(self, output):
-    pass
+  def write_json(self, filepath):
+    with open(filepath, 'w') as file:
+      json.dump(self.status, file, sort_keys=True, indent=2)
 
-  def WriteText(self, output):
-    pass
+  def write_txt(self, filepath):
+    with open(filepath, 'w') as file:
+      lines = ["{}\t{}\n".format(a['datetime'], a['content']) for a in self.status]
+      file.writelines(lines)
 
-  def WriteCSV(self, output):
+  def write_csv(self, filepath):
     pass
 
 
@@ -104,4 +110,7 @@ if __name__ == '__main__':
   sys.setdefaultencoding('utf-8')
   crawler = RenrenCrawler(email, password)
   if crawler.login():
-    crawler.getStatus()
+    crawler.get_status()
+    print "Writing result to output.txt..."
+    crawler.write_txt('output.txt')
+ 
