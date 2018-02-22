@@ -1,11 +1,13 @@
 #-*- coding: utf-8 -*-  
 """ Renren status crawler.
 
-Examples:
+Example:
     $ python3 renren.py
 
 Todo:
-  * Move ``get_soup`` function to separate ``util`` module.
+  * Move ``get_soup`` function to a separate ``util`` module.
+  * Replace debug information ``print`` with ``logger``.
+  * Add python3 version check.
 
 """
 
@@ -23,7 +25,7 @@ DATETIME_OUTPUT_PATTERN = '%Y-%m-%d %H:%M'
 MAX_PAGE = -1
 
 
-def __get_soup(url, data=None):
+def get_soup(url, data=None):
   encoded_data = urllib.parse.urlencode(data).encode("utf-8") if data else None
   request = urllib.request.Request(url, encoded_data)
   response = urllib.request.urlopen(request).read()
@@ -82,6 +84,7 @@ class RenrenCrawler:
     # Iterate pages.
     current_page = 1
     while current_page <= total_page:
+      print('Loading page:', current_page)
       status_list = status_soup.select('.list')[0].find_all('div')
       for status in status_list:
         if status.select('.time'):
@@ -92,15 +95,13 @@ class RenrenCrawler:
             obj['datetime'] = time.strftime(DATETIME_OUTPUT_PATTERN)
             obj['content'] = (status.a.next_element).strip()
             self.status.append(obj)
-            print(obj['datetime'])
-            print(obj['content'])
-            print('')
+            # print(obj['datetime'], '\t', obj['content'], '\n')
       current_page += 1
       if current_page > total_page:
         break
 
       # Get the next page.
-      url = str(status_page.select(".l")[0].a['href'])
+      url = str(status_soup.select(".l")[0].a['href'])
       status_soup = get_soup(url)
 
   def write_json(self, filepath):
@@ -109,8 +110,8 @@ class RenrenCrawler:
 
   def write_txt(self, filepath):
     with open(filepath, 'w') as file:
-      lines = ["{}\t{}\n".format(a['datetime'], a['content']) for a in self.status]
-      file.writelines(lines)
+      for status in self.status:
+        file.write('{}\t{}\n'.format(status['datetime'], status['content']))
 
 
 if __name__ == '__main__':
@@ -118,6 +119,9 @@ if __name__ == '__main__':
   password = input("Input password: ")
   crawler = RenrenCrawler(email, password)
   if crawler.login():
+    print('Login successful')
     crawler.get_status(MAX_PAGE)
     print('Writing result to output.txt...')
     crawler.write_txt('output.txt')
+    print('Finished.')
+ 
